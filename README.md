@@ -1,6 +1,5 @@
 # Airbnb Free High Quality Photo Downloader
-An extremely useful tool to download high quality photos from an Airbnb listings for free
-
+An extremely useful tool to download high quality photos from an Airbnb listings for free (This repository is not affiliated to Airbnb)
 
 This tool is a Python-based scraper that downloads images from Airbnb listings. Given an Airbnb URL or room number, it scrapes the page to extract image URLs and downloads the images to a local directory. The tool uses BeautifulSoup for HTML parsing and requests for network requests.
 
