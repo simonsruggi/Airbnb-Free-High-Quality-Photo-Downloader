@@ -3,7 +3,9 @@ An extremely useful tool to download high quality photos from an Airbnb listings
 
 This tool is a Python-based scraper that downloads images from Airbnb listings. Given an Airbnb URL or room number, it scrapes the page to extract image URLs and downloads the images to a local directory. The tool uses BeautifulSoup for HTML parsing and requests for network requests.
 
-Please note that this tool should be used responsibly and in compliance with Airbnb's terms of service. Also, keep in mind that changes in Airbnb's website structure may affect its functionality.
+Please note that this tool should be used responsibly and in compliance with Airbnb's terms of service.
+I am not responsible for any use of this tool.
+Also, keep in mind that changes in Airbnb's website structure may affect its functionality.
 
 ## Installation
 
