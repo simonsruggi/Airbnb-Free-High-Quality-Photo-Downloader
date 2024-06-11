@@ -3,6 +3,7 @@ import json
 import random
 import requests
 from bs4 import BeautifulSoup
+import sys
 
 
 class AirbnbScraper:
@@ -31,7 +32,7 @@ class AirbnbScraper:
         try:
             response = requests.get(url, headers=headers)
             soup = BeautifulSoup(response.text, 'html.parser')
-            script_tags = soup.find('script', id='data-deferred-state').text
+            script_tags = soup.find('script', id='data-deferred-state-0').text
             data = json.loads(script_tags)[
                 'niobeMinimalClientData'][0][1]['data']['presentation']
             self.traverse_dict(data)
