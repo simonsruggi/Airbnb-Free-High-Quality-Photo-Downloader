@@ -30,7 +30,7 @@ class AirbnbScraper:
             'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
         }
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers) 
             soup = BeautifulSoup(response.text, 'html.parser')
             script_tags = soup.find('script', id='data-deferred-state-0').text
             data = json.loads(script_tags)[
@@ -40,6 +40,7 @@ class AirbnbScraper:
             print(f"Failed to get image links due to {e}")
 
     def download_image(self, url):
+        url = url.replace('/im/pictures', '/pictures')
         url = url.split("?")[0]
         image_name = url.split("/")[-1]
         try:
