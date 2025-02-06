@@ -68,7 +68,7 @@ class AirbnbScraper:
         try:
             if 'https://www.airbnb.com/rooms/' in airbnb_url or 'https://airbnb.com/' in airbnb_url:
                 self.get_image_links(airbnb_url)
-            elif len(airbnb_url) == 18:
+            elif len(airbnb_url) == 18 or len(airbnb_url) == 8:
                 airbnb_url = 'https://www.airbnb.com/rooms/' + airbnb_url
                 self.get_image_links(airbnb_url)
             else:
@@ -89,7 +89,7 @@ class AirbnbScraper:
 
 
 def main():
-    print('Please input your airbnb listing URL or room number (room number must have 18 chars)')
+    print('Please input your airbnb listing URL or room number (room number must have 18 or 8 chars)')
     airbnb_url = input()
     destination_folder = 'airbnb_home_photos' + str(random.randint(0, 1000))
     scraper = AirbnbScraper(destination_folder)
