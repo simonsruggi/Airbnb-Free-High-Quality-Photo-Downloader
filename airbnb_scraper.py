@@ -11,8 +11,12 @@ class AirbnbScraper:
     def __init__(self, destination_folder):
         self.link_photos = []
         self.destination_folder = destination_folder
-        if not os.path.exists(destination_folder):
-            os.makedirs(destination_folder)
+
+    def create_destination_folder(self):
+        if not os.path.exists(self.destination_folder):
+            os.makedirs(self.destination_folder)
+            return True
+        return False
 
     def traverse_dict(self, dictionary):
         for key, value in dictionary.items():
@@ -63,6 +67,7 @@ class AirbnbScraper:
         if r.status_code == 200:
             r.raw.decode_content = True
             try:
+                self.create_destination_folder()
                 with open(os.path.join(self.destination_folder, image_name), 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
@@ -149,6 +154,9 @@ class AirbnbScraper:
             return
             
         print(f'Found {len(self.link_photos)} image URLs')
+        self.create_destination_folder()
+        print(f'Saving photos to: {os.path.abspath(self.destination_folder)}')
+        
         for url in self.link_photos:
             if self.download_image(url):
                 num_downloaded += 1
