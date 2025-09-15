@@ -29,29 +29,119 @@ class AirbnbScraper:
             elif key == 'baseUrl' and 'original' in value and value not in self.link_photos:
                 self.link_photos.append(value)
 
+    def _extract_presentation_from_data(self, data_obj):
+        if isinstance(data_obj, dict):
+            if 'presentation' in data_obj:
+                return data_obj['presentation']
+            for v in data_obj.values():
+                found = self._extract_presentation_from_data(v)
+                if found is not None:
+                    return found
+        elif isinstance(data_obj, list):
+            for item in data_obj:
+                found = self._extract_presentation_from_data(item)
+                if found is not None:
+                    return found
+        return None
+
     def get_image_links(self, url):
-        headers = {
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7'
+        base_headers = {
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'accept-language': 'en-US,en;q=0.9,it;q=0.8',
+            'cache-control': 'no-cache',
+            'pragma': 'no-cache',
+            'upgrade-insecure-requests': '1'
         }
+        candidate_urls = [url]
+        if '?' in url:
+            candidate_urls.append(url + '&locale=en')
+        else:
+            candidate_urls.append(url + '?locale=en')
+
         try:
-            response = requests.get(url, headers=headers)
-            if response.status_code != 200:
-                print(f"Failed to access URL. Status code: {response.status_code}")
-                return False
-                
-            soup = BeautifulSoup(response.text, 'html.parser')
-            script_tags = soup.find('script', id='data-deferred-state-0')
-            if not script_tags:
-                print("Could not find required data in the page. This may not be a valid Airbnb listing.")
-                return False
-                
-            script_tags = script_tags.text
-            data = json.loads(script_tags)[
-                'niobeMinimalClientData'][0][1]['data']['presentation']
-            self.traverse_dict(data)
+            found_presentation = None
+            last_response_text = ''
+            for candidate in candidate_urls:
+                response = requests.get(candidate, headers=base_headers, timeout=15)
+                if response.status_code != 200:
+                    continue
+
+                last_response_text = response.text
+                soup = BeautifulSoup(response.text, 'html.parser')
+                candidate_scripts = []
+                for script_tag in soup.find_all('script'):
+                    script_id = script_tag.get('id')
+                    if script_id and (script_id.startswith('data-deferred-state') or script_id == 'data-state' or script_id == '__NEXT_DATA__'):
+                        candidate_scripts.append(script_tag)
+                # broaden: any script containing the key string
+                if not candidate_scripts:
+                    for s in soup.find_all('script'):
+                        text = (s.string or s.text or '').strip()
+                        if 'niobeMinimalClientData' in text:
+                            candidate_scripts.append(s)
+
+                for s in candidate_scripts:
+                    text = s.string or s.text or ''
+                    text = text.strip()
+                    if not text:
+                        continue
+                    try:
+                        data_json = json.loads(text)
+                    except json.JSONDecodeError:
+                        continue
+                    # find niobe
+                    def find_key(obj, target_key):
+                        if isinstance(obj, dict):
+                            if target_key in obj:
+                                return obj[target_key]
+                            for v in obj.values():
+                                found = find_key(v, target_key)
+                                if found is not None:
+                                    return found
+                        elif isinstance(obj, list):
+                            for it in obj:
+                                found = find_key(it, target_key)
+                                if found is not None:
+                                    return found
+                        return None
+                    niobe = find_key(data_json, 'niobeMinimalClientData')
+                    if niobe is None:
+                        continue
+                    presentation = self._extract_presentation_from_data(niobe)
+                    if presentation is not None:
+                        found_presentation = presentation
+                        break
+                if found_presentation is not None:
+                    break
+
+            if found_presentation is None:
+                # Fallback: regex extraction for baseUrl/original URLs and muscache images
+                html = last_response_text
+                if not html:
+                    print("Could not find required data in the page. This may not be a valid Airbnb listing.")
+                    return False
+                # Find baseUrl JSON fields
+                baseurl_matches = re.findall(r'"baseUrl"\s*:\s*"(https:[^"\\]+)"', html)
+                for u in baseurl_matches:
+                    if 'original' in u and u not in self.link_photos:
+                        self.link_photos.append(u)
+                # Find direct muscache images
+                img_matches = re.findall(r'https://a0\.muscache\.com/[^"\s>]+\.(?:jpg|jpeg|png)', html, flags=re.IGNORECASE)
+                for u in img_matches:
+                    # Prefer originals when available; still add if not present
+                    if u not in self.link_photos:
+                        self.link_photos.append(u)
+
+                if not self.link_photos:
+                    print("Could not find required data in the page. This may not be a valid Airbnb listing.")
+                    return False
+
+                return True
+
+            self.traverse_dict(found_presentation)
             return True
-        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, TypeError) as e:
+        except requests.exceptions.RequestException as e:
             print(f"Failed to get image links due to {e}")
             return False
 
@@ -81,54 +171,62 @@ class AirbnbScraper:
             return False
 
     def extract_room_id(self, url):
-        standard_pattern = r'airbnb\.com/rooms/(\d+)'
+        standard_pattern = r'airbnb\.(?:com|[a-z]{2})/rooms/(\d+)'
         direct_pattern = r'^(\d{8}|\d{18})$'
-        
+        og_url_pattern = r'airbnb\.(?:com|[a-z]{2})/rooms/(\d+)'
+
         match = re.search(standard_pattern, url, re.IGNORECASE)
         if match:
             return match.group(1)
-        
+
         match = re.search(direct_pattern, url)
         if match:
             return match.group(1)
-        
+
         try:
             headers = {
                 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
             }
             response = requests.get(url, headers=headers, allow_redirects=True)
-            
+
             if response.status_code != 200:
                 print(f"Failed to access URL. Status code: {response.status_code}")
                 return None
-                
+
             final_url = response.url
             match = re.search(standard_pattern, final_url, re.IGNORECASE)
             if match:
                 return match.group(1)
-                
+
             soup = BeautifulSoup(response.text, 'html.parser')
             meta_tags = soup.find_all('meta')
             for tag in meta_tags:
                 if tag.get('property') == 'og:url':
                     content = tag.get('content', '')
-                    match = re.search(standard_pattern, content, re.IGNORECASE)
+                    match = re.search(og_url_pattern, content, re.IGNORECASE)
                     if match:
                         return match.group(1)
+
+            a_tags = soup.find_all('a', href=True)
+            for a in a_tags:
+                href = a['href']
+                match = re.search(standard_pattern, href, re.IGNORECASE)
+                if match:
+                    return match.group(1)
         except Exception as e:
             print(f"Failed to extract room ID from custom URL: {e}")
-        
+
         return None
 
     def scrape_airbnb(self, airbnb_url):
         num_downloaded = 0
-        
+
         if not airbnb_url or not airbnb_url.strip():
             print("Error: No URL provided")
             return
-            
+
         try:
-            if 'https://www.airbnb.com/rooms/' in airbnb_url or 'https://airbnb.com/rooms/' in airbnb_url:
+            if re.search(r'https://(?:www\.)?airbnb\.(?:com|[a-z]{2})/rooms/\d+', airbnb_url):
                 if not self.get_image_links(airbnb_url):
                     print("Failed to process the Airbnb URL. Please verify the URL is correct.")
                     return
@@ -152,16 +250,17 @@ class AirbnbScraper:
         if not self.link_photos:
             print("No images found. The URL may not be a valid Airbnb listing.")
             return
-            
+
         print(f'Found {len(self.link_photos)} image URLs')
         self.create_destination_folder()
         print(f'Saving photos to: {os.path.abspath(self.destination_folder)}')
-        
+
         for url in self.link_photos:
             if self.download_image(url):
                 num_downloaded += 1
 
         print(f'Successfully downloaded {num_downloaded} photos and saved them in directory: {os.path.abspath(self.destination_folder)}')
+
 
 
 def main():
