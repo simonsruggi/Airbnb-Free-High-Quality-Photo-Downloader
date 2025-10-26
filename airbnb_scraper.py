@@ -27,7 +27,9 @@ class AirbnbScraper:
                     if isinstance(item, dict):
                         self.traverse_dict(item)
             elif key == 'baseUrl' and 'original' in value and value not in self.link_photos:
-                self.link_photos.append(value)
+                # Escludi immagini con "apple-touch-icon" nel nome
+                if 'apple-touch-icon' not in value.lower():
+                    self.link_photos.append(value)
 
     def _extract_presentation_from_data(self, data_obj):
         if isinstance(data_obj, dict):
@@ -61,13 +63,13 @@ class AirbnbScraper:
 
         try:
             found_presentation = None
-            last_response_text = ''
+            self.last_response_text = ''
             for candidate in candidate_urls:
                 response = requests.get(candidate, headers=base_headers, timeout=15)
                 if response.status_code != 200:
                     continue
 
-                last_response_text = response.text
+                self.last_response_text = response.text
                 soup = BeautifulSoup(response.text, 'html.parser')
                 candidate_scripts = []
                 for script_tag in soup.find_all('script'):
@@ -117,7 +119,7 @@ class AirbnbScraper:
 
             if found_presentation is None:
                 # Fallback: regex extraction for baseUrl/original URLs and muscache images
-                html = last_response_text
+                html = self.last_response_text
                 if not html:
                     print("Could not find required data in the page. This may not be a valid Airbnb listing.")
                     return False
@@ -125,13 +127,17 @@ class AirbnbScraper:
                 baseurl_matches = re.findall(r'"baseUrl"\s*:\s*"(https:[^"\\]+)"', html)
                 for u in baseurl_matches:
                     if 'original' in u and u not in self.link_photos:
-                        self.link_photos.append(u)
+                        # Escludi immagini con "apple-touch-icon" nel nome
+                        if 'apple-touch-icon' not in u.lower():
+                            self.link_photos.append(u)
                 # Find direct muscache images
                 img_matches = re.findall(r'https://a0\.muscache\.com/[^"\s>]+\.(?:jpg|jpeg|png)', html, flags=re.IGNORECASE)
                 for u in img_matches:
                     # Prefer originals when available; still add if not present
                     if u not in self.link_photos:
-                        self.link_photos.append(u)
+                        # Escludi immagini con "apple-touch-icon" nel nome
+                        if 'apple-touch-icon' not in u.lower():
+                            self.link_photos.append(u)
 
                 if not self.link_photos:
                     print("Could not find required data in the page. This may not be a valid Airbnb listing.")
@@ -230,19 +236,32 @@ class AirbnbScraper:
                 if not self.get_image_links(airbnb_url):
                     print("Failed to process the Airbnb URL. Please verify the URL is correct.")
                     return
+                
+                # Estrai le informazioni della descrizione
+                description = self.extract_listing_info(self.last_response_text)
+                print(f"\nDescrizione della proprietà:\n{description}\n")
             else:
                 room_id = self.extract_room_id(airbnb_url)
                 if room_id:
                     standard_url = f'https://www.airbnb.com/rooms/{room_id}'
                     print(f"Extracted room ID: {room_id}")
+                    
                     if not self.get_image_links(standard_url):
                         print("Failed to process the Airbnb listing. Please verify the URL is correct.")
                         return
+                    
+                    # Estrai le informazioni della descrizione
+                    description = self.extract_listing_info(self.last_response_text)
+                    print(f"\nDescrizione della proprietà:\n{description}\n")
                 else:
                     print(f"Trying to scrape URL directly: {airbnb_url}")
                     if not self.get_image_links(airbnb_url):
                         print("Invalid URL. Could not find an Airbnb listing.")
                         return
+                    
+                    # Estrai le informazioni della descrizione
+                    description = self.extract_listing_info(self.last_response_text)
+                    print(f"\nDescrizione della proprietà:\n{description}\n")
         except Exception as e:
             print(f"Failed to scrape Airbnb due to: {e}")
             return
@@ -255,13 +274,38 @@ class AirbnbScraper:
         self.create_destination_folder()
         print(f'Saving photos to: {os.path.abspath(self.destination_folder)}')
 
+    
         for url in self.link_photos:
             if self.download_image(url):
+                
                 num_downloaded += 1
 
         print(f'Successfully downloaded {num_downloaded} photos and saved them in directory: {os.path.abspath(self.destination_folder)}')
 
+    def extract_listing_info(self, html):
+        if not html:
+            return "Descrizione non trovata."
+            
+        match = re.search(r'"sectionId"\s*:\s*"DESCRIPTION_MODAL".*?"sectionId"', html, re.DOTALL)
+        if not match:
+            match = re.search(r'"sectionId"\s*:\s*"DESCRIPTION_MODAL".*', html, re.DOTALL)
 
+        if match:
+            blocco = match.group()
+            # Rimuove le parti tecniche e lascia solo il testo leggibile
+            testo_pulito = re.sub(r'<[^>]+>', '', blocco)       # elimina tag HTML
+            testo_pulito = re.sub(r'\\n|\\t|\\r', ' ', testo_pulito)  # pulizia spazi
+            testo_pulito = re.sub(r'["{},]', ' ', testo_pulito)
+            testo_pulito = re.sub(r'\s+', ' ', testo_pulito).strip()
+            return testo_pulito
+
+        # fallback: cerchiamo un <meta> o <div> con la descrizione
+        soup = BeautifulSoup(html, "html.parser")
+        meta_desc = soup.find("meta", {"name": "description"})
+        if meta_desc and meta_desc.get("content"):
+            return meta_desc["content"]
+
+        return "Descrizione non trovata."
 
 def main():
     print('Please input your Airbnb listing URL or room number:')
