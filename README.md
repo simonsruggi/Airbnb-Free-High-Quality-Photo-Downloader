@@ -22,3 +22,7 @@ Also, keep in mind that changes in Airbnb's website structure may affect its fun
 ## Issues
 
 If you encounter any issues, feel free to open an issue or make a pull request.
+
+## Support
+
+Airbnb-Free-High-Quality-Photo-Downloader is free and open source. If you find it useful, please [⭐️ star the repo](https://github.com/simonsruggi/Airbnb-Free-High-Quality-Photo-Downloader) — and if you'd like to support my open-source work, you can [💛 sponsor me on GitHub](https://github.com/sponsors/simonsruggi). Completely optional, always appreciated. 🙏
